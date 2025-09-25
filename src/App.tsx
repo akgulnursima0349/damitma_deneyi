@@ -33,6 +33,9 @@ const DistillationExperiment: React.FC = () => {
   const [hypothesis, setHypothesis] = useState<'ethanol_first' | 'water_first' | 'mixed' | null>(null);
   const [distillationData, setDistillationData] = useState<DistillationData[]>([]);
   const [isExperimentRunning, setIsExperimentRunning] = useState(false);
+  const [coolingOn, setCoolingOn] = useState(true);
+  const [flamePower, setFlamePower] = useState(50); // 0-100
+  const [lastDrops, setLastDrops] = useState<number[]>([]); // animasyon için
 
   const phases: { id: Phase; title: string; icon: React.ReactNode }[] = [
     { id: 'theory', title: 'Öğrenim Çıktısı ve Amaç', icon: <BookOpen className="w-5 h-5" /> },
@@ -66,33 +69,36 @@ const DistillationExperiment: React.FC = () => {
     setIsExperimentRunning(true);
     setDistillationData([]);
     setCollectedVolume(0);
+    setLastDrops([]);
     
     // Simülasyon başlat
     let experimentTime = 0;
     const interval = setInterval(() => {
       experimentTime += 1;
         
-        // Sıcaklık artışı simülasyonu
+        // Alev gücüne bağlı ısı artışı (soğutma açıkken efektif sıcaklık yavaşlar)
+        const baseRise = flamePower / 25; // 0-4 °C/saniye arası taban artış
+        const coolingFactor = coolingOn ? 0.7 : 1.0;
+        const targetTemp = temperature + baseRise * coolingFactor;
+
         if (experimentTime < 30) {
-          setTemperature(25 + (experimentTime * 2)); // 25°C'den 85°C'ye
+          setTemperature(() => Math.min(targetTemp, 78));
         } else if (experimentTime < 60) {
-          setTemperature(78 + ((experimentTime - 30) * 0.5)); // 78-93°C arası
+          setTemperature(prev => Math.min(prev + 0.3 * coolingFactor, 93));
         } else {
-          setTemperature(93 + ((experimentTime - 60) * 0.2)); // 93°C'den yavaş artış
+          setTemperature(prev => prev + 0.1 * coolingFactor);
         }
         
-        // Damıtık toplama simülasyonu
-        if (experimentTime > 25 && experimentTime < 50) {
-          setCollectedVolume(prev => prev + 0.5); // Etanol fazı
-        } else if (experimentTime > 50) {
-          setCollectedVolume(prev => prev + 0.2); // Su fazı
+        // Damıtık toplama simülasyonu (soğutma açıksa damla hızı daha verimli)
+        const ethanolWindow = temperature >= 78 && temperature <= 82;
+        const waterWindow = temperature > 90;
+        const dropRate = ethanolWindow ? (coolingOn ? 3 : 2) : waterWindow ? (coolingOn ? 2 : 1) : 0;
+        if (dropRate > 0) {
+          setCollectedVolume(prev => prev + dropRate * 0.1);
+          setLastDrops(prev => [...prev.slice(-8), experimentTime]);
         }
         
-        // Veri kaydı
-        const dropRate = experimentTime > 25 && experimentTime < 50 ? 2 : experimentTime > 50 ? 1 : 0;
-        const observation = experimentTime < 25 ? 'Isıtma başladı' : 
-                           experimentTime < 50 ? 'Etanol damıtılıyor' : 
-                           'Su damıtılıyor';
+        const observation = ethanolWindow ? 'Etanol damıtılıyor' : waterWindow ? 'Su damıtılıyor' : 'Isıtma devam ediyor';
         
         setDistillationData(prev => [...prev, {
           time: experimentTime,
@@ -129,13 +135,6 @@ const DistillationExperiment: React.FC = () => {
             <h3 className="font-semibold text-blue-800 mb-2">Amaç</h3>
             <p className="text-gray-700">
               Etil alkol (etanol)–su karışımını ısıtarak etanolce zengin damıtık elde etmek ve sıcaklık–zaman ilişkisini incelemek.
-            </p>
-          </div>
-          
-          <div className="bg-white p-4 rounded-lg border border-blue-200">
-            <h3 className="font-semibold text-blue-800 mb-2">Teori Özeti</h3>
-            <p className="text-gray-700">
-              1 atm'de etanol ~78°C, su ~100°C civarında kaynar. Daha düşük kaynama noktalı bileşen daha önce buharlaşıp soğutucuda yoğunlaşır ve alıcı kapta toplanır.
             </p>
           </div>
         </div>
@@ -345,11 +344,38 @@ const DistillationExperiment: React.FC = () => {
           <line x1="280" y1="170" x2="300" y2="140" stroke="#3B82F6" strokeWidth="2"/>
           <text x="190" y="90" className="text-xs fill-blue-600">Su Girişi</text>
           <text x="300" y="130" className="text-xs fill-blue-600">Su Çıkışı</text>
+
+          {/* Damla animasyonu: son damlamaları temsil eden küçük daireler */}
+          {lastDrops.map((_, i) => (
+            <circle key={i} cx={320} cy={220 + (i % 5) * 5} r={2} fill="#60A5FA" />
+          ))}
         </svg>
       </div>
 
       {/* Kontroller */}
-      <div className="flex justify-center gap-4 mb-4">
+      <div className="flex flex-wrap items-center justify-center gap-4 mb-4">
+        <button
+          onClick={() => setCoolingOn(v => !v)}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            coolingOn ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
+          }`}
+        >
+          Soğutma {coolingOn ? 'Açık' : 'Kapalı'}
+        </button>
+
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-700">Alev Şiddeti</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={flamePower}
+            onChange={e => setFlamePower(Number(e.target.value))}
+            className="w-40"
+          />
+          <span className="text-sm font-medium text-gray-800 w-10 text-right">{flamePower}%</span>
+        </div>
+
         <button
           onClick={startExperiment}
           disabled={isExperimentRunning}
@@ -364,7 +390,7 @@ const DistillationExperiment: React.FC = () => {
       </div>
 
       {/* Durum Göstergeleri */}
-      <div className="grid grid-cols-2 gap-4 text-center">
+      <div className="grid grid-cols-3 gap-4 text-center">
         <div className="bg-white p-3 rounded-lg border">
           <div className="flex items-center justify-center gap-2 mb-1">
             <Thermometer className="w-4 h-4 text-red-500" />
@@ -379,6 +405,14 @@ const DistillationExperiment: React.FC = () => {
             <span className="text-sm font-medium">Toplanan Hacim</span>
           </div>
           <div className="text-lg font-bold text-blue-600">{collectedVolume.toFixed(1)} mL</div>
+        </div>
+
+        <div className="bg-white p-3 rounded-lg border">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <span className="w-4 h-4 inline-block rounded-full" style={{ background: coolingOn ? '#10B981' : '#9CA3AF' }} />
+            <span className="text-sm font-medium">Soğutma</span>
+          </div>
+          <div className="text-lg font-bold {coolingOn ? 'text-green-700' : 'text-gray-600'}">{coolingOn ? 'Açık' : 'Kapalı'}</div>
         </div>
       </div>
     </div>
@@ -470,6 +504,13 @@ const DistillationExperiment: React.FC = () => {
           </h2>
           
           <div className="space-y-4">
+            <div className="bg-white p-4 rounded-lg border border-purple-200">
+              <h3 className="font-semibold text-purple-800 mb-2">Teori Özeti</h3>
+              <p className="text-sm text-gray-700">
+                1 atm'de etanol ~78°C, su ~100°C civarında kaynar. Daha düşük kaynama noktalı bileşen daha önce buharlaşıp soğutucuda yoğunlaşır ve alıcı kapta toplanır.
+              </p>
+            </div>
+            
             <div className="bg-white p-4 rounded-lg border border-purple-200">
               <h3 className="font-semibold text-purple-800 mb-3">Damıtma Fazları</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
