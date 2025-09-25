@@ -35,7 +35,6 @@ const DistillationExperiment: React.FC = () => {
   const [isExperimentRunning, setIsExperimentRunning] = useState(false);
   const [coolingOn, setCoolingOn] = useState(true);
   const [flamePower, setFlamePower] = useState(50); // 0-100
-  const [lastDrops, setLastDrops] = useState<number[]>([]); // animasyon için
 
   const phases: { id: Phase; title: string; icon: React.ReactNode }[] = [
     { id: 'theory', title: 'Öğrenim Çıktısı ve Amaç', icon: <BookOpen className="w-5 h-5" /> },
@@ -69,7 +68,6 @@ const DistillationExperiment: React.FC = () => {
     setIsExperimentRunning(true);
     setDistillationData([]);
     setCollectedVolume(0);
-    setLastDrops([]);
     
     // Simülasyon başlat
     let experimentTime = 0;
@@ -95,7 +93,6 @@ const DistillationExperiment: React.FC = () => {
         const dropRate = ethanolWindow ? (coolingOn ? 3 : 2) : waterWindow ? (coolingOn ? 2 : 1) : 0;
         if (dropRate > 0) {
           setCollectedVolume(prev => prev + dropRate * 0.1);
-          setLastDrops(prev => [...prev.slice(-8), experimentTime]);
         }
         
         const observation = ethanolWindow ? 'Etanol damıtılıyor' : waterWindow ? 'Su damıtılıyor' : 'Isıtma devam ediyor';
@@ -310,46 +307,93 @@ const DistillationExperiment: React.FC = () => {
       
       {/* Damıtma Düzeneği SVG */}
       <div className="relative bg-white p-8 rounded-lg border border-gray-200 mb-4">
-        <svg viewBox="0 0 400 300" className="w-full h-64">
-          {/* Balon Joje */}
-          <ellipse cx="100" cy="200" rx="30" ry="50" fill="#E5E7EB" stroke="#6B7280" strokeWidth="2"/>
-          <rect x="85" y="150" width="30" height="50" fill="#E5E7EB" stroke="#6B7280" strokeWidth="2"/>
-          <text x="100" y="250" textAnchor="middle" className="text-xs fill-gray-600">Balon Joje</text>
-          
-          {/* Termometre */}
-          <line x1="130" y1="120" x2="130" y2="180" stroke="#374151" strokeWidth="3"/>
-          <circle cx="130" cy="115" r="3" fill="#EF4444"/>
-          <text x="140" y="120" className="text-xs fill-gray-600">Termometre</text>
-          
-          {/* Soğutucu */}
-          <rect x="200" y="120" width="80" height="60" fill="#F3F4F6" stroke="#6B7280" strokeWidth="2"/>
-          <line x1="200" y1="130" x2="280" y2="130" stroke="#3B82F6" strokeWidth="2"/>
-          <line x1="200" y1="170" x2="280" y2="170" stroke="#3B82F6" strokeWidth="2"/>
-          <text x="240" y="200" textAnchor="middle" className="text-xs fill-gray-600">Liebig Soğutucu</text>
-          
-          {/* Alıcı Kap */}
-          <ellipse cx="320" cy="250" rx="25" ry="30" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="2"/>
-          <text x="320" y="290" textAnchor="middle" className="text-xs fill-gray-600">Alıcı Kap</text>
-          
-          {/* Bağlantı Boruları */}
-          <line x1="130" y1="180" x2="200" y2="150" stroke="#6B7280" strokeWidth="3"/>
-          <line x1="280" y1="150" x2="320" y2="220" stroke="#6B7280" strokeWidth="3"/>
-          
-          {/* Isı Kaynağı */}
-          <rect x="70" y="250" width="60" height="20" fill="#FEF2F2" stroke="#EF4444" strokeWidth="2"/>
-          <text x="100" y="280" textAnchor="middle" className="text-xs fill-gray-600">Isı Kaynağı</text>
-          
-          {/* Su Hortumları */}
-          <line x1="180" y1="100" x2="200" y2="130" stroke="#3B82F6" strokeWidth="2"/>
-          <line x1="280" y1="170" x2="300" y2="140" stroke="#3B82F6" strokeWidth="2"/>
-          <text x="190" y="90" className="text-xs fill-blue-600">Su Girişi</text>
-          <text x="300" y="130" className="text-xs fill-blue-600">Su Çıkışı</text>
+        {(() => {
+          const cycle = distillationData.length; // yeniden çizim için basit sayaç
+          const ethanolWindow = temperature >= 78 && temperature <= 82;
+          const waterWindow = temperature > 90;
+          const showBoil = temperature >= 70;
+          const condenserColor = coolingOn ? '#3B82F6' : '#9CA3AF';
+          const receiverLevel = Math.min(1, collectedVolume / 100); // 0-100 mL aralığı
+          const vaporSpeed = ethanolWindow ? 3 : waterWindow ? 2 : 0;
+          const bubbleCount = showBoil ? 6 : 0;
 
-          {/* Damla animasyonu: son damlamaları temsil eden küçük daireler */}
-          {lastDrops.map((_, i) => (
-            <circle key={i} cx={320} cy={220 + (i % 5) * 5} r={2} fill="#60A5FA" />
-          ))}
-        </svg>
+          return (
+            <svg viewBox="0 0 440 310" className="w-full h-72">
+              {/* Balon Joje */}
+              <ellipse cx="110" cy="210" rx="34" ry="54" fill="#E5E7EB" stroke="#6B7280" strokeWidth="2"/>
+              <rect x="92" y="154" width="36" height="56" fill="#E5E7EB" stroke="#6B7280" strokeWidth="2"/>
+              <text x="110" y="268" textAnchor="middle" className="text-xs fill-gray-600">Balon Joje</text>
+
+              {/* Balon içi kabarcıklar */}
+              {Array.from({ length: bubbleCount }).map((_, i) => {
+                const bx = 110 + Math.sin((cycle + i) * 0.7 + i) * 18;
+                const by = 225 - ((cycle * 2 + i * 8) % 60);
+                const br = 2 + (i % 3);
+                return <circle key={`b${i}`} cx={bx} cy={by} r={br} fill="#93C5FD" opacity={0.8} />
+              })}
+
+              {/* Boyun: termometre */}
+              <line x1="142" y1="125" x2="142" y2="185" stroke="#374151" strokeWidth="3"/>
+              <circle cx="142" cy="120" r="3" fill="#EF4444"/>
+              <text x="152" y="126" className="text-xs fill-gray-600">Termometre</text>
+
+              {/* Soğutucu gövde */}
+              <rect x="220" y="120" width="90" height="60" fill="#F3F4F6" stroke="#6B7280" strokeWidth="2"/>
+              <line x1="220" y1="132" x2="310" y2="132" stroke={condenserColor} strokeWidth="3"/>
+              <line x1="220" y1="168" x2="310" y2="168" stroke={condenserColor} strokeWidth="3"/>
+              <text x="265" y="200" textAnchor="middle" className="text-xs fill-gray-600">Liebig Soğutucu</text>
+
+              {/* Soğutucu akış okları */}
+              {Array.from({ length: 4 }).map((_, i) => (
+                <g key={`flow${i}`} opacity={coolingOn ? 1 : 0.4}>
+                  <polygon points={`${235 + ((cycle + i*20) % 80)} ,136 ${230 + ((cycle + i*20) % 80)} ,131 ${240 + ((cycle + i*20) % 80)} ,131`} fill={condenserColor} />
+                  <polygon points={`${310 - ((cycle + i*20) % 80)} ,164 ${305 - ((cycle + i*20) % 80)} ,169 ${315 - ((cycle + i*20) % 80)} ,169`} fill={condenserColor} />
+                </g>
+              ))}
+
+              {/* Buhar akışı - balondan soğutucuya */}
+              {vaporSpeed > 0 && Array.from({ length: 5 }).map((_, i) => {
+                const t = (cycle * vaporSpeed + i * 15) % 100;
+                const x = 160 + (t * 0.6); // 160-220 arası
+                const y = 150 - (t * 0.1); // hafif yükselerek gitsin
+                return <circle key={`v${i}`} cx={x} cy={y} r={2} fill="#F59E0B" opacity={0.9} />
+              })}
+
+              {/* Alıcı Kap */}
+              <ellipse cx="355" cy="255" rx="28" ry="34" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="2"/>
+              {/* Alıcı kap sıvı seviyesi */}
+              <clipPath id="receiverClip">
+                <ellipse cx="355" cy="255" rx="28" ry="34" />
+              </clipPath>
+              <rect x="327" y={255 - receiverLevel * 30} width="56" height={receiverLevel * 60} fill="#BFDBFE" clipPath="url(#receiverClip)" />
+              <text x="355" y="298" textAnchor="middle" className="text-xs fill-gray-600">Alıcı Kap</text>
+
+              {/* Bağlantı Boruları */}
+              <line x1="142" y1="185" x2="220" y2="150" stroke="#6B7280" strokeWidth="3"/>
+              <line x1="310" y1="150" x2="355" y2="225" stroke="#6B7280" strokeWidth="3"/>
+
+              {/* Isı Kaynağı ve alev animasyonu */}
+              <rect x="76" y="260" width="68" height="22" fill="#FEE2E2" stroke="#EF4444" strokeWidth="2"/>
+              <text x="110" y="290" textAnchor="middle" className="text-xs fill-gray-600">Isı Kaynağı</text>
+              {(() => {
+                const flameH = 8 + Math.max(0, flamePower / 15) + (cycle % 4);
+                const flameW = 6 + Math.max(0, flamePower / 20);
+                return (
+                  <g>
+                    <polygon points={`${110},${258 - flameH} ${110 - flameW},260 ${110 + flameW},260`} fill="#F59E0B" opacity={0.8} />
+                    <polygon points={`${110},${260 - flameH/1.6} ${110 - flameW/2},260 ${110 + flameW/2},260`} fill="#FDE68A" opacity={0.9} />
+                  </g>
+                );
+              })()}
+
+              {/* Su Hortumları etiketleri */}
+              <line x1="200" y1="100" x2="220" y2="132" stroke={condenserColor} strokeWidth="2"/>
+              <line x1="310" y1="168" x2="330" y2="140" stroke={condenserColor} strokeWidth="2"/>
+              <text x="205" y="92" className="text-xs" fill={condenserColor}>Su Girişi</text>
+              <text x="330" y="130" className="text-xs" fill={condenserColor}>Su Çıkışı</text>
+            </svg>
+          );
+        })()}
       </div>
 
       {/* Kontroller */}
@@ -412,7 +456,7 @@ const DistillationExperiment: React.FC = () => {
             <span className="w-4 h-4 inline-block rounded-full" style={{ background: coolingOn ? '#10B981' : '#9CA3AF' }} />
             <span className="text-sm font-medium">Soğutma</span>
           </div>
-          <div className="text-lg font-bold {coolingOn ? 'text-green-700' : 'text-gray-600'}">{coolingOn ? 'Açık' : 'Kapalı'}</div>
+          <div className={`text-lg font-bold ${coolingOn ? 'text-green-700' : 'text-gray-600'}`}>{coolingOn ? 'Açık' : 'Kapalı'}</div>
         </div>
       </div>
     </div>
